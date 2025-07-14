@@ -3,21 +3,17 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Load model and preprocessing components
+# Load saved models
 model = joblib.load('models_files/logistic_regression_model.pkl')
 label_encoders = joblib.load('models_files/label_encoders.pkl')
 preprocessor = joblib.load('models_files/onehot_preprocessor.pkl')
-scaler = joblib.load('models_files/scaler.pkl')  # NEW: Scaler
+scaler = joblib.load('models_files/scaler.pkl')
 
-# Binary and nominal columns
-binary_cols = ['hypertension', 'heart_disease', 'diabetes']
-nominal_cols = ['gender', 'smoking_history']
+# App title
+st.title("Diabetes Risk Prediction")
+st.write("Enter your information to predict diabetes risk")
 
-# Streamlit app title
-st.title("🩺 Diabetes Risk Prediction App")
-st.markdown("Fill out the form to predict the likelihood of diabetes based on medical indicators.")
-
-#  User Input Form 
+# User inputs
 gender = st.selectbox("Gender", ["Male", "Female"])
 age = st.number_input("Age", min_value=0, max_value=120, value=30)
 hypertension = st.selectbox("Hypertension", ["Yes", "No"])
@@ -27,38 +23,51 @@ bmi = st.number_input("BMI", min_value=10.0, max_value=60.0, value=25.0)
 HbA1c_level = st.number_input("HbA1c Level", min_value=3.0, max_value=15.0, value=5.5)
 blood_glucose_level = st.number_input("Blood Glucose Level", min_value=50, max_value=300, value=100)
 
-# Prepare input as DataFrame
-input_data = pd.DataFrame({
-    'gender': [gender],
-    'age': [age],
-    'hypertension': [hypertension],
-    'heart_disease': [heart_disease],
-    'smoking_history': [smoking_history],
-    'bmi': [bmi],
-    'HbA1c_level': [HbA1c_level],
-    'blood_glucose_level': [blood_glucose_level],
-    'diabetes': ['No']  # Needed for alignment with training columns
-})
-
 # Predict button
 if st.button("Predict"):
-    # Step 1: Label encode binary columns
-    for col in binary_cols:
-        input_data[col] = label_encoders[col].transform(input_data[col])
+    # Create input data
+    input_data = pd.DataFrame({
+        'gender': [gender],
+        'hypertension': [hypertension],
+        'heart_disease': [heart_disease],
+        'smoking_history': [smoking_history],
+        'age': [age],
+        'bmi': [bmi],
+        'HbA1c_level': [HbA1c_level],
+        'blood_glucose_level': [blood_glucose_level],
+        'diabetes': ['No']  # Placeholder
+    })
 
-    # Step 2: One-hot encode nominal features using saved preprocessor
-    X_encoded = preprocessor.transform(input_data)
+    try:
+        # Process the data same as training
+        # Scale numeric features first
+        numeric_data = input_data[['age', 'bmi', 'HbA1c_level', 'blood_glucose_level']]
+        scaled_numeric = scaler.transform(numeric_data)
+        
+        # Put scaled values back
+        input_data[['age', 'bmi', 'HbA1c_level', 'blood_glucose_level']] = scaled_numeric
 
-    # Step 3: Scale features using saved scaler
-    X_scaled = scaler.transform(X_encoded)
+        # Encode Yes/No columns
+        for col in ['hypertension', 'heart_disease', 'diabetes']:
+            input_data[col] = label_encoders[col].transform(input_data[col])
 
-    # Step 4: Predict
-    pred_class = model.predict(X_scaled)[0]
-    pred_proba = model.predict_proba(X_scaled)[0][1]
+        # Apply preprocessor (handles categories)
+        X_input = input_data.drop('diabetes', axis=1)
+        X_processed = preprocessor.transform(X_input)
 
-    # Step 5: Format and show result
-    prediction_message = "Yes (Likely to Have Diabetes)" if pred_class == 1 else "No (Unlikely to Have Diabetes)"
-    
-    st.subheader("Prediction Result")
-    st.write(f"**Predicted Class:** {prediction_message}")
-    st.write(f"**Probability of Diabetes (Class 1):** {pred_proba:.4f}")
+        # Make prediction
+        prediction = model.predict(X_processed)[0]
+        probability = model.predict_proba(X_processed)[0][1]
+
+        # Show results
+        st.subheader("Results")
+        if prediction == 1:
+            st.error("High Risk: Likely to have diabetes")
+        else:
+            st.success("Low Risk: Unlikely to have diabetes")
+        
+        st.write(f"**Probability of diabetes:** {probability:.1%}")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
+        st.write("Please check your input values and try again.")
